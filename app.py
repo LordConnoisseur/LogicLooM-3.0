@@ -9,6 +9,50 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Move the generate_headline function outside the class for proper caching
+@st.cache_data(show_spinner=False)
+def cached_generate_headline(article, model, tokenizer, device):
+    try:
+        # Input validation
+        if not article or len(article.strip()) < 10:
+            raise ValueError("Article text is too short")
+            
+        # Preprocess
+        article = re.sub(r'\s+', ' ', str(article))
+        article = re.sub(r'[^\w\s.,!?]', '', article)
+        article = article.strip()
+        
+        # Tokenize
+        inputs = tokenizer(
+            article,
+            max_length=512,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        ).to(device)
+
+        # Generate
+        start_time = time.time()
+        with torch.no_grad():
+            outputs = model.generate(
+                input_ids=inputs['input_ids'],
+                attention_mask=inputs['attention_mask'],
+                max_length=64,
+                num_beams=5,
+                length_penalty=1.5,
+                early_stopping=True
+            )
+        generation_time = time.time() - start_time
+        logger.info(f"Headline generated in {generation_time:.2f} seconds")
+
+        # Decode
+        headline = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return headline
+
+    except Exception as e:
+        logger.error(f"Error generating headline: {str(e)}")
+        raise
+
 class HeadlineGenerator:
     def __init__(self, model_name="Lord-Connoisseur/headline-generator"):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -26,51 +70,8 @@ class HeadlineGenerator:
             logger.error(f"Error loading model from Hugging Face Hub: {str(e)}")
             raise
 
-    def clean_text(self, text):
-        text = re.sub(r'\s+', ' ', str(text))
-        text = re.sub(r'[^\w\s.,!?]', '', text)
-        return text.strip()
-
-    @st.cache_data(show_spinner=False)
     def generate_headline(self, article):
-        try:
-            # Input validation
-            if not article or len(article.strip()) < 10:
-                raise ValueError("Article text is too short")
-                
-            # Preprocess
-            article = self.clean_text(article)
-            
-            # Tokenize
-            inputs = self.tokenizer(
-                article,
-                max_length=512,
-                padding='max_length',
-                truncation=True,
-                return_tensors='pt'
-            ).to(self.device)
-
-            # Generate
-            start_time = time.time()
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    input_ids=inputs['input_ids'],
-                    attention_mask=inputs['attention_mask'],
-                    max_length=64,
-                    num_beams=5,
-                    length_penalty=1.5,
-                    early_stopping=True
-                )
-            generation_time = time.time() - start_time
-            logger.info(f"Headline generated in {generation_time:.2f} seconds")
-
-            # Decode
-            headline = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            return headline
-
-        except Exception as e:
-            logger.error(f"Error generating headline: {str(e)}")
-            raise
+        return cached_generate_headline(article, self.model, self.tokenizer, self.device)
 
 def main():
     st.set_page_config(
