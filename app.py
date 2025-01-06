@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Move the generate_headline function outside the class for proper caching
 @st.cache_data(show_spinner=False)
-def cached_generate_headline(article, model, tokenizer, device):
+def cached_generate_headline(article, _model, _tokenizer, _device):
     try:
         # Input validation
         if not article or len(article.strip()) < 10:
@@ -23,18 +23,18 @@ def cached_generate_headline(article, model, tokenizer, device):
         article = article.strip()
         
         # Tokenize
-        inputs = tokenizer(
+        inputs = _tokenizer(
             article,
             max_length=512,
             padding='max_length',
             truncation=True,
             return_tensors='pt'
-        ).to(device)
+        ).to(_device)
 
         # Generate
         start_time = time.time()
         with torch.no_grad():
-            outputs = model.generate(
+            outputs = _model.generate(
                 input_ids=inputs['input_ids'],
                 attention_mask=inputs['attention_mask'],
                 max_length=64,
@@ -46,7 +46,7 @@ def cached_generate_headline(article, model, tokenizer, device):
         logger.info(f"Headline generated in {generation_time:.2f} seconds")
 
         # Decode
-        headline = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        headline = _tokenizer.decode(outputs[0], skip_special_tokens=True)
         return headline
 
     except Exception as e:
